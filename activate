@@ -1,0 +1,131 @@
+# This file must be used with "source bin/activate" *from bash*
+# you cannot run it directly
+
+filename="$0"
+if [[ -n "${BASH_SOURCE[0]}" ]]; then
+  filename="${BASH_SOURCE[0]}"
+elif [[ -n "${(%):-%x}" ]]; then
+  filename="${(%):-%x}"
+fi
+
+if [ -n "${BASH:-}" ]; then
+  if [[ $called == $0 ]]; then
+    (>&2 echo "This script must be sourced")
+    exit 1
+  fi
+# @TODO: How to check if we're running zsh?
+# elif [ -n "${ZSH_VERSION:-}" ] ; then
+fi
+
+deactivate () {
+  # reset old environment variables
+  if [ -n "${_OLD_VIRTUAL_PATH:-}" ] ; then
+    PATH="${_OLD_VIRTUAL_PATH:-}"
+    export PATH
+    unset _OLD_VIRTUAL_PATH
+  fi
+
+  # This should detect bash and zsh, which have a hash command that must
+  # be called to get it to forget past commands.  Without forgetting
+  # past commands the $PATH changes we made may not be respected
+  if [ -n "${BASH:-}" -o -n "${ZSH_VERSION:-}" ] ; then
+    hash -r
+  fi
+
+  if [ -n "${_OLD_VIRTUAL_PS1:-}" ] ; then
+    PS1="${_OLD_VIRTUAL_PS1:-}"
+    export PS1
+    unset _OLD_VIRTUAL_PS1
+  fi
+
+  unset VIRTUAL_ENV
+  if [ ! "$1" = "nondestructive" ] ; then
+    # Self destruct!
+    unset -f deactivate
+		unset -f composer console drush
+  fi
+}
+# echo '--------------------------------------------------------------------------------'
+# for K in "${!MYMAP[@]}"; do echo $K --- ${MYMAP[$K]}; done
+# echo '--------------------------------------------------------------------------------'
+
+# unset irrelevant variables
+deactivate nondestructive
+
+VIRTUAL_ENV=$(cd $(dirname "$filename") && pwd)
+export VIRTUAL_ENV
+
+_OLD_VIRTUAL_PATH="$PATH"
+PATH="$VIRTUAL_ENV:$PATH"
+export PATH
+
+if [ -z "${VIRTUAL_ENV_DISABLE_PROMPT:-}" ] ; then
+  _OLD_VIRTUAL_PS1="${PS1:-}"
+  if [ "x(docker-compose-venv) " != x ] ; then
+    PS1="(docker-compose-venv) ${PS1:-}"
+  else
+    if [ "`basename \"$VIRTUAL_ENV\"`" = "__" ] ; then
+      # special case for Aspen magic directories
+      # see http://www.zetadev.com/software/aspen/
+      PS1="[`basename \`dirname \"$VIRTUAL_ENV\"\``] $PS1"
+    else
+      PS1="(`basename \"$VIRTUAL_ENV\"`)$PS1"
+    fi
+  fi
+  export PS1
+fi
+
+# This should detect bash and zsh, which have a hash command that must
+# be called to get it to forget past commands.  Without forgetting
+# past commands the $PATH changes we made may not be respected
+if [ -n "${BASH:-}" -o -n "${ZSH_VERSION:-}" ] ; then
+  hash -r
+fi
+
+# @see https://unix.stackexchange.com/questions/13464/is-there-a-way-to-find-a-file-in-an-inverse-recursive-search/13474
+upsearch () {
+  slashes=${PWD//[^\/]/}
+  directory="$PWD"
+  for (( n=${#slashes}; n>0; --n ))
+  do
+    test -e "$directory/$1" && echo "$directory/$1" && return
+    directory="$directory/.."
+  done
+}
+
+docker_compose_file=$(upsearch 'docker-compose.yml')
+if [ -z "$docker_compose_file" ]; then
+  (>&2 echo "${bold}Cannot find docker-compose.yml file${normal}")
+  # exit 1
+fi
+
+docker_compose_dir=$(cd $(dirname "$docker_compose_file") && pwd)
+
+# Helper function to call `docker-compose` in the right context
+docker_compose () {
+  # Note: Apparently, using --project-directory or --file options for `docker-compose` will break use of `$PWD` in
+  # docker-compose.yml. Therefore, we `cd` before running `docker-compose` command.
+  (cd "$docker_compose_dir" && docker-compose "$@")
+}
+
+composer() {
+	(cd $docker_compose_dir; docker-compose exec phpfpm composer "$@")
+}
+
+if [ -e $docker_compose_dir/bin/console ]; then
+	console() {
+		docker_compose exec phpfpm /app/bin/console "$@"
+	}
+fi
+
+drush() {
+  local root=/app
+  if [ -d $docker_compose_dir/web ]; then
+    root=/app/web
+  fi
+  if [ -e $docker_compose_dir/vendor/bin/drush ]; then
+    docker_compose exec phpfpm /app/vendor/bin/drush --root=$root "$@"
+  else
+    docker_compose run --rm drush --root=$root "$@"
+  fi
+}
