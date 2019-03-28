@@ -1,6 +1,9 @@
 # This file must be used with "source bin/activate" *from bash*
 # you cannot run it directly
 
+bold=$(tput bold)
+normal=$(tput sgr0)
+
 filename="$0"
 if [[ -n "${BASH_SOURCE[0]}" ]]; then
   filename="${BASH_SOURCE[0]}"
@@ -42,17 +45,16 @@ deactivate () {
   if [ ! "$1" = "nondestructive" ] ; then
     # Self destruct!
     unset -f deactivate
-		unset -f composer console drush
+		unset -f composer drush
+		# @FIXME: console may not be defined
+		unset -f console
   fi
 }
-# echo '--------------------------------------------------------------------------------'
-# for K in "${!MYMAP[@]}"; do echo $K --- ${MYMAP[$K]}; done
-# echo '--------------------------------------------------------------------------------'
 
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV=$(cd $(dirname "$filename") && pwd)
+VIRTUAL_ENV=$(cd "$(dirname "$filename")" && pwd)
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
@@ -97,9 +99,9 @@ docker_compose_file=$(upsearch 'docker-compose.yml')
 if [ -z "$docker_compose_file" ]; then
   (>&2 echo "${bold}Cannot find docker-compose.yml file${normal}")
   # exit 1
-fi
+else
 
-docker_compose_dir=$(cd $(dirname "$docker_compose_file") && pwd)
+docker_compose_dir=$(cd "$(dirname "$docker_compose_file")" && pwd)
 
 # Helper function to call `docker-compose` in the right context
 docker_compose () {
@@ -109,10 +111,10 @@ docker_compose () {
 }
 
 composer() {
-	(cd $docker_compose_dir; docker-compose exec phpfpm composer "$@")
+	(cd "$docker_compose_dir" || return; docker-compose exec phpfpm composer "$@")
 }
 
-if [ -e $docker_compose_dir/bin/console ]; then
+if [ -e "$docker_compose_dir/bin/console" ]; then
 	console() {
 		docker_compose exec phpfpm /app/bin/console "$@"
 	}
@@ -120,12 +122,13 @@ fi
 
 drush() {
   local root=/app
-  if [ -d $docker_compose_dir/web ]; then
+  if [ -d "$docker_compose_dir/web" ]; then
     root=/app/web
   fi
-  if [ -e $docker_compose_dir/vendor/bin/drush ]; then
+  if [ -e "$docker_compose_dir/vendor/bin/drush" ]; then
     docker_compose exec phpfpm /app/vendor/bin/drush --root=$root "$@"
   else
     docker_compose run --rm drush --root=$root "$@"
   fi
 }
+fi
